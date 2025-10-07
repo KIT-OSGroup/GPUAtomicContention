@@ -1,0 +1,20 @@
+# Device config
+NVIDIA=true
+NVIDIA_DEVICES=GPU-ceefec92-c156-4b3b-8402-ecf365ee8018,GPU-4fe7a482-921d-4f49-8cc0-cd67eab4a94b
+NVIDIA_FOLDERS=nvidia-a4500,nvidia-rtx-4070
+AMD=true
+AMD_DEVICES=/dev/dri/renderD128,/dev/dri/renderD129
+AMD_FOLDERS=amd-rx-6900-xt,amd-rx-7900-xtx
+
+# Contention benchmark config
+BM_CONTENTION=true
+BM_CONTENTION_RUNS=10
+BM_CONTENTION_BASELINE_RUNS=1024
+BM_CONTENTION_MODES=add_acquire,add_seq_cst,add_relaxed,add_acquire_sync,add_seq_cst_sync,add_relaxed_sync,spinlock
+BM_CONTENTION_SCOPES=local,device,system
+BM_CONTENTION_GRIDS=small,large
+BM_CONTENTION_TRANSPOSE_MODES=direct,scattered
+BM_CONTENTION_NO_BASELINE=false
+BM_CONTENTION_NO_VARYING_THREADS=false
+BM_CONTENTION_NO_VARYING_STRIDES=false
+BM_CONTENTION_NO_OFFSETTED_STRIDES=false
