@@ -1,3 +1,11 @@
+/*
+
+NOTE: The implementation of atomic loads and stores below uses PTX inline
+      assembly as specified in the PTX ISA.
+      See: https://docs.nvidia.com/cuda/parallel-thread-execution/index.html#release-acquire-patterns
+
+*/
+
 #pragma once
 
 #include <hip/hip_runtime.h>

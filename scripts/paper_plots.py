@@ -200,7 +200,7 @@ def plot_contention():
             markers=['o'] * len(groupings),
             colors=["C{}".format(int(math.log2(group))) for group in groupings],
             xvalues=[list(map(lambda x: 2 if x == 0 else x, strides))] * len(groupings),
-            yvalues=[[np.mean(parseAll(gpu, "bm_contention_add_relaxed_t_32_32768_m_{}_{}".format(group, stride), (32 * 32768) / large_target)) for stride in strides] for group in groupings],
+            yvalues=[[np.mean(parseAll(gpu, "bm_contention_add_relaxed_device_t_32_32768_m_{}_{}".format(group, stride), (32 * 32768) / large_target)) for stride in strides] for group in groupings],
             xscale="log",
             xbase=2,
             xlabel="Memory Stride [B]",
@@ -210,7 +210,7 @@ def plot_contention():
             cols=5,
             xticks=list(map(lambda x: 2 if x == 0 else x, strides)),
             xticklabels=list(map(lambda x: "0" if x == 0 else f"{x}", strides)),
-            error=[[np.std(parseAll(gpu, "bm_contention_add_relaxed_t_32_32768_m_{}_{}".format(group, stride), (32 * 32768) / large_target)) for stride in strides] for group in groupings],
+            error=[[np.std(parseAll(gpu, "bm_contention_add_relaxed_device_t_32_32768_m_{}_{}".format(group, stride), (32 * 32768) / large_target)) for stride in strides] for group in groupings],
             #ybounds=[10**3, 4*10**4],
             legend_title="#atomics",
             xticks_rotation=-45
@@ -225,7 +225,7 @@ def plot_contention():
             markers=['o'] * len(groupings),
             colors=["C{}".format(int(math.log2(group))) for group in groupings],
             xvalues=[list(map(lambda x: 1 if x == 0 else x, strides))] * len(groupings),
-            yvalues=[[np.mean(parseAll(gpu, "bm_contention_add_relaxed_t_32_32768_m_{}_{}_transposed".format(group, stride), (32 * 32768) / large_target)) for stride in strides] for group in groupings],
+            yvalues=[[np.mean(parseAll(gpu, "bm_contention_add_relaxed_device_t_32_32768_m_{}_{}_transposed".format(group, stride), (32 * 32768) / large_target)) for stride in strides] for group in groupings],
             xscale="log",
             xbase=2,
             xlabel="Memory Stride [B]",
@@ -235,7 +235,7 @@ def plot_contention():
             cols=5,
             xticks=list(map(lambda x: 2 if x == 0 else x, strides)),
             xticklabels=list(map(lambda x: "0" if x == 0 else f"{x}", strides)),
-            error=[[np.std(parseAll(gpu, "bm_contention_add_relaxed_t_32_32768_m_{}_{}_transposed".format(group, stride), (32 * 32768) / large_target)) for stride in strides] for group in groupings],
+            error=[[np.std(parseAll(gpu, "bm_contention_add_relaxed_device_t_32_32768_m_{}_{}_transposed".format(group, stride), (32 * 32768) / large_target)) for stride in strides] for group in groupings],
             #ybounds=[5*10**2, 5*10**4],
             legend_title="#atomics",
             xticks_rotation=-45
@@ -249,8 +249,8 @@ def plot_lane_scaling():
     def all_warps(): return (1 << i for i in range(15))
     def all_lanes(): return (1 << i for i in range(6))
 
-    def make_filename(mode, lanes, warps, groups, stride, additions: None | list[Any] = None, append_bin: bool = False):
-        return f"bm_contention_{mode}_t_{lanes}_{warps}_m_{groups}_{stride}{"".join(f"_{el}" for el in additions) if additions is not None else ""}{".bin" if append_bin else ""}"
+    def make_filename(mode, scope, lanes, warps, groups, stride, additions: None | list[Any] = None, append_bin: bool = False):
+        return f"bm_contention_{mode}_{scope}_t_{lanes}_{warps}_m_{groups}_{stride}{"".join(f"_{el}" for el in additions) if additions is not None else ""}{".bin" if append_bin else ""}"
 
     def num_iterations_per_thread(lanes, warps, large):
         if large:
@@ -278,7 +278,7 @@ def plot_lane_scaling():
             markers=['o', '^', 's', 'P', 'X', 'D'] * 6,
             colors=[color(warp * group) for (warp, group) in configs],
             xvalues=[list(all_lanes())] * len(configs),
-            yvalues=[[np.mean(parseAll(gpu, make_filename("add_relaxed", lane, warp, group, 4), 1.0)) / num_iterations_per_thread(lane, warp, True) for lane in all_lanes()] for (warp, group) in configs],
+            yvalues=[[np.mean(parseAll(gpu, make_filename("add_relaxed", "device", lane, warp, group, 4), 1.0)) / num_iterations_per_thread(lane, warp, True) for lane in all_lanes()] for (warp, group) in configs],
             xscale="log",
             xbase=2,
             xlabel="#(active threads/warp)",

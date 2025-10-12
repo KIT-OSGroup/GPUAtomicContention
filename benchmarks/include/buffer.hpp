@@ -1,5 +1,4 @@
-#ifndef INCLUDED___gpu_nvme___buffer_hpp
-#define INCLUDED___gpu_nvme___buffer_hpp
+#pragma once
 
 #include <hip/hip_runtime.h>
 #include <cstring>
@@ -17,7 +16,6 @@ enum class Target {
     Both
 };
 
-/// \brief generic buffer between host and device
 class Buffer {
 public:
     __host__ constexpr Buffer() = default;
@@ -29,7 +27,6 @@ public:
             void *buffer = std::malloc(size);
             std::memset(buffer, 0, size);
             m_host_buffer = std::shared_ptr<void>(buffer, [](auto ptr) {
-                // std::cout << "~Buffer()" << std::endl;
                 std::free(ptr);
             });
         }
@@ -39,7 +36,6 @@ public:
             HIP_CHECK(hipMalloc(&device_ptr, size));
             HIP_CHECK(hipMemset(device_ptr, 0, size));
             m_device_buffer = std::shared_ptr<void>(device_ptr, [](auto ptr) {
-                // std::cout << "~Buffer()" << std::endl;
                 HIP_CHECK(hipFree(ptr));
             });
         }
@@ -51,8 +47,6 @@ public:
     __host__ Buffer &operator=(const Buffer &other) = default;
     __host__ Buffer &operator=(Buffer &&other) noexcept = default;
 
-    /// \brief Copies data from source to destination
-    //! \attention Does not call the destructor of the overwritten object
     __host__ void copy(Target dst)
     {
         assert((dst != Target::Both));
@@ -87,8 +81,6 @@ private:
     std::shared_ptr<void> m_device_buffer{nullptr};
 };
 
-/// \brief buffer with type
-//! \attention objects will be left uninitialized
 template <typename T>
 class TypedBuffer {
 public:
@@ -115,5 +107,3 @@ public:
 private:
     Buffer m_buffer{};
 };
-
-#endif // INCLUDED___gpu_nvme___buffer_hpp

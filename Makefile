@@ -10,6 +10,9 @@ plot:
 
 ## Running
 
+.PHONY: run
+run: run-nvidia run-amd
+
 .PHONY: run-nvidia
 run-nvidia: build
 	./scripts/runner.sh ./scripts/run_program_for_nvidia.sh

@@ -1,3 +1,34 @@
+/*
+
+NOTE: Our simt::atomic implementation is in part inspired by NVIDIA's
+      cuda::atomic inside libcu++. Specifically, the function dispatch using
+      tags for each thread scope. As such, we include the corresponding
+      copyright notice.
+
+--------------------------------------------------------------------------------
+
+Copyright (c) 2018, NVIDIA Corporation
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+
+*/
+
 #pragma once
 
 #include <hip/hip_runtime.h>
@@ -89,7 +120,6 @@ namespace simt {
             ATOMIC_WITH_MEMORDER(memorder, atomicExch_system(pointer, desired), __threadfence_system());
             return result;
         }
-
 
         template <typename T>
         __device__ bool __atomic_compare_exchange_strong(T *address, T expected, T desired, int memorder, __thread_scope_block_tag) noexcept {

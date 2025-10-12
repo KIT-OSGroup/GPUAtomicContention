@@ -1,5 +1,4 @@
-#ifndef INCLUDED___base___utility_hpp
-#define INCLUDED___base___utility_hpp
+#pragma once
 
 #include <climits>
 #include <cstdint>
@@ -220,24 +219,32 @@ __device__ inline int mask_relative_lane_id(int lane_id, uint64_t active_lane_ma
     return -1;
 }
 
-// Waits for completion of the kernel with an approximate timeout in seconds.
-static bool wait_for_completion(hipEvent_t &event, int seconds) {
-    auto start = std::chrono::high_resolution_clock::now();
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed;
-    std::chrono::duration<double> timeout = std::chrono::seconds(seconds);
+template <typename Enum>
+void parse_list(const char *options[], int num_options, std::vector<Enum> &config) {
+    char *option_string = strdup(optarg);
+    char *option = nullptr;
 
-    do {
-        if (hipEventQuery(event) == hipSuccess) {
-            return true;
+    config.clear();
+
+    while ((option = strsep(&option_string, ","))) {
+        int enum_value = -1;
+        for (int i = 0; i < num_options; i++) {
+            if (strcmp(option, options[i]) == 0) {
+                enum_value = i;
+                break;
+            }
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        end = std::chrono::high_resolution_clock::now();
-        elapsed = end - start;
-    } while(elapsed < timeout);
+        if (enum_value == -1) {
+            std::cerr << "Unknown option: " << option << std::endl;
+            free(option_string);
+            abort();
+        }
 
-    return false;
+        config.emplace_back(static_cast<Enum>(enum_value));
+    }
+
+    free(option_string);
 }
 
-#endif // INCLUDED___base___utility_hpp
+bool wait_for_completion(hipEvent_t &event, int seconds);

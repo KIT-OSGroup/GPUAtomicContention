@@ -1,3 +1,12 @@
+/*
+
+NOTE: The implementation of atomic loads and stores below is written in
+      accordance with the user guide for the AMDPGU backend inside LLVM,
+      targeting memory model GFX10 to GFX11, i.e., from RNDA1 until RDNA3.
+      See: https://llvm.org/docs/AMDGPUUsage.html#memory-model-gfx10-gfx11
+
+*/
+
 #pragma once
 
 #include <hip/hip_runtime.h>

@@ -50,24 +50,40 @@ constexpr uint32_t SpinlockMinOperations = 1;
 constexpr uint32_t BaselineNumOperationsShort = 128;
 constexpr uint32_t BaselineNumOperationsLong = 1024;
 
+static const char *ModeStrings[] = {
+    "add_acquire", "add_seq_cst", "add_relaxed",
+    "add_acquire_sync", "add_seq_cst_sync", "add_relaxed_sync",
+    "spinlock"
+};
+
+static const char *ScopeStrings[] = {
+    "block", "device", "system"
+};
+
 enum class Mode {
-    ATOMIC_ADD_SEQ_CST = 0,
-    ATOMIC_ADD_ACQUIRE = 1,
-    ATOMIC_ADD_RELAXED = 2,
-    ATOMIC_ADD_SEQ_CST_SYNC = 3,
-    ATOMIC_ADD_ACQUIRE_SYNC = 4,
-    ATOMIC_ADD_RELAXED_SYNC = 5,
-    SPINLOCK_MUTEX = 6
+    ATOMIC_ADD_SEQ_CST,
+    ATOMIC_ADD_ACQUIRE,
+    ATOMIC_ADD_RELAXED,
+    ATOMIC_ADD_SEQ_CST_SYNC,
+    ATOMIC_ADD_ACQUIRE_SYNC,
+    ATOMIC_ADD_RELAXED_SYNC,
+    SPINLOCK_MUTEX
+};
+
+enum class Scope {
+    BLOCK = simt::thread_scope_block,
+    DEVICE = simt::thread_scope_device,
+    SYSTEM = simt::thread_scope_system
 };
 
 enum class Grid {
-    Large,
-    Small
+    LARGE,
+    SMALL
 };
 
 enum class Transpose {
-    No,
-    Yes
+    DIRECT,
+    SCATTERED
 };
 
 static uint32_t s_warp_size{};
@@ -89,8 +105,9 @@ static std::vector<Mode> s_modes{
     Mode::ATOMIC_ADD_RELAXED_SYNC,
     Mode::SPINLOCK_MUTEX
 };
-static std::vector<Grid> s_grids{Grid::Large, Grid::Small};
-static std::vector<Transpose> s_transpose_modes{Transpose::No, Transpose::Yes};
+static std::vector<Scope> s_scopes{Scope::BLOCK, Scope::DEVICE, Scope::SYSTEM};
+static std::vector<Grid> s_grids{Grid::LARGE, Grid::SMALL};
+static std::vector<Transpose> s_transpose_modes{Transpose::DIRECT, Transpose::SCATTERED};
 static int s_benchmark_runs{10};
 static int s_baseline_runs{1024};
 static bool s_do_baseline_benchmarks{true};
@@ -113,8 +130,8 @@ __always_inline constexpr bool is_power_of_two(std::unsigned_integral auto val) 
     return val == 0 || (val & (val - 1)) == 0;
 }
 
-template <simt::memory_order Order, bool Synchronize>
-__attribute__((always_inline)) __device__ inline uint64_t atomic_add(simt::atomic<uint32_t> *atomic, bool active, int count) {
+template <simt::thread_scope Scope, simt::memory_order Order, bool Synchronize>
+__attribute__((always_inline)) __device__ inline uint64_t atomic_add(simt::atomic<uint32_t, Scope> *atomic, bool active, int count) {
     uint64_t start = __global_clock();
 
     while (count--) {
@@ -131,7 +148,8 @@ __attribute__((always_inline)) __device__ inline uint64_t atomic_add(simt::atomi
     return end - start;
 }
 
-__attribute__((always_inline)) __device__ inline uint64_t spinlock_mutex(simt::atomic<uint32_t> *atomic, bool active, int count) {
+template <simt::thread_scope Scope>
+__attribute__((always_inline)) __device__ inline uint64_t spinlock_mutex(simt::atomic<uint32_t, Scope> *atomic, bool active, int count) {
     uint32_t gid = static_cast<uint32_t>(global_id());
     uint64_t start = __global_clock();
 
@@ -155,6 +173,45 @@ __attribute__((always_inline)) __device__ inline uint64_t spinlock_mutex(simt::a
 
     uint64_t end = __global_clock();
     return end - start;
+}
+
+__device__ uint64_t dispatch_atomic(char *atomic, bool active, int count, Mode mode, simt::thread_scope scope) {
+#define DISPATCH_WITH_MEMORDER(memorder, sync)                                                                                                                              \
+    do {                                                                                                                                                                    \
+        switch (scope) {                                                                                                                                                    \
+            case simt::thread_scope_block:                                                                                                                                  \
+                return atomic_add<simt::thread_scope_block, memorder, sync>(reinterpret_cast<simt::atomic<uint32_t, simt::thread_scope_block> *>(atomic), active, count);   \
+            case simt::thread_scope_device:                                                                                                                                 \
+                return atomic_add<simt::thread_scope_device, memorder, sync>(reinterpret_cast<simt::atomic<uint32_t, simt::thread_scope_device> *>(atomic), active, count); \
+            case simt::thread_scope_system:                                                                                                                                 \
+                return atomic_add<simt::thread_scope_system, memorder, sync>(reinterpret_cast<simt::atomic<uint32_t, simt::thread_scope_system> *>(atomic), active, count); \
+        }                                                                                                                                                                   \
+    } while (0)
+
+    switch (mode) {
+        case Mode::ATOMIC_ADD_SEQ_CST:
+            DISPATCH_WITH_MEMORDER(simt::memory_order_seq_cst, false);
+        case Mode::ATOMIC_ADD_ACQUIRE:
+            DISPATCH_WITH_MEMORDER(simt::memory_order_acquire, false);
+        case Mode::ATOMIC_ADD_RELAXED:
+            DISPATCH_WITH_MEMORDER(simt::memory_order_relaxed, false);
+        case Mode::ATOMIC_ADD_SEQ_CST_SYNC:
+            DISPATCH_WITH_MEMORDER(simt::memory_order_seq_cst, true);
+        case Mode::ATOMIC_ADD_ACQUIRE_SYNC:
+            DISPATCH_WITH_MEMORDER(simt::memory_order_acquire, true);
+        case Mode::ATOMIC_ADD_RELAXED_SYNC:
+            DISPATCH_WITH_MEMORDER(simt::memory_order_relaxed, true);
+        case Mode::SPINLOCK_MUTEX:
+            switch (scope) {
+                case simt::thread_scope_block:
+                    return spinlock_mutex<simt::thread_scope_block>(reinterpret_cast<simt::atomic<uint32_t, simt::thread_scope_block> *>(atomic), active, count);
+                case simt::thread_scope_device:
+                    return spinlock_mutex<simt::thread_scope_device>(reinterpret_cast<simt::atomic<uint32_t, simt::thread_scope_device> *>(atomic), active, count);
+                case simt::thread_scope_system:
+                    return spinlock_mutex<simt::thread_scope_system>(reinterpret_cast<simt::atomic<uint32_t, simt::thread_scope_system> *>(atomic), active, count);
+            }
+    }
+#undef DISPATCH_WITH_MEMORDER
 }
 
 template <simt::thread_scope Scope, uint32_t NumOperations, simt::memory_order Order, bool Synchronize>
@@ -202,16 +259,16 @@ __device__ uint64_t baseline_spinlock_mutex(simt::atomic<uint32_t, Scope> *atomi
 
 template <uint32_t NumOperations>
 __device__ uint64_t dispatch_baseline_atomic(char *atomic, Mode mode, simt::thread_scope scope) {
-#define DISPATCH_WITH_MEMORDER(memorder, sync)                                                                                                                        \
-    do {                                                                                                                                                              \
-        switch (scope) {                                                                                                                                              \
-            case simt::thread_scope_block:                                                                                                                            \
+#define DISPATCH_WITH_MEMORDER(memorder, sync)                                                                                                                                       \
+    do {                                                                                                                                                                             \
+        switch (scope) {                                                                                                                                                             \
+            case simt::thread_scope_block:                                                                                                                                           \
                 return baseline_atomic_add<simt::thread_scope_block, NumOperations, memorder, sync>(reinterpret_cast<simt::atomic<uint32_t, simt::thread_scope_block> *>(atomic));   \
-            case simt::thread_scope_device:                                                                                                                           \
+            case simt::thread_scope_device:                                                                                                                                          \
                 return baseline_atomic_add<simt::thread_scope_device, NumOperations, memorder, sync>(reinterpret_cast<simt::atomic<uint32_t, simt::thread_scope_device> *>(atomic)); \
-            case simt::thread_scope_system:                                                                                                                           \
+            case simt::thread_scope_system:                                                                                                                                          \
                 return baseline_atomic_add<simt::thread_scope_system, NumOperations, memorder, sync>(reinterpret_cast<simt::atomic<uint32_t, simt::thread_scope_system> *>(atomic)); \
-        }                                                                                                                                                             \
+        }                                                                                                                                                                            \
     } while (0)
 
     switch (mode) {
@@ -265,7 +322,8 @@ __global__ void kernel(
     bool transpose,
     uint64_t *active_masks,
     uint32_t target_value,
-    Mode mode
+    Mode mode,
+    simt::thread_scope scope
 ) {
     int lid = lane_id();
     uint32_t gid = static_cast<uint32_t>(global_id());
@@ -284,7 +342,7 @@ __global__ void kernel(
         group = linearized_gid / group_size;
     }
 
-    auto *atomic = reinterpret_cast<simt::atomic<uint32_t> *>(atomics + mem_stride * group);
+    auto *atomic = atomics + mem_stride * group;
 
     uint32_t local_target = target_value / total_threads;
 
@@ -295,61 +353,19 @@ __global__ void kernel(
     assert(total_threads % groups == 0);
     assert(target_value % total_threads == 0);
 
-    switch (mode) {
-        case Mode::ATOMIC_ADD_SEQ_CST:
-            times[linearized_gid] = atomic_add<simt::memory_order_seq_cst, false>(atomic, active, local_target);
-            break;
-        case Mode::ATOMIC_ADD_ACQUIRE:
-            times[linearized_gid] = atomic_add<simt::memory_order_acquire, false>(atomic, active, local_target);
-            break;
-        case Mode::ATOMIC_ADD_RELAXED:
-            times[linearized_gid] = atomic_add<simt::memory_order_relaxed, false>(atomic, active, local_target);
-            break;
-        case Mode::ATOMIC_ADD_SEQ_CST_SYNC:
-            times[linearized_gid] = atomic_add<simt::memory_order_seq_cst, true>(atomic, active, local_target);
-            break;
-        case Mode::ATOMIC_ADD_ACQUIRE_SYNC:
-            times[linearized_gid] = atomic_add<simt::memory_order_acquire, true>(atomic, active, local_target);
-            break;
-        case Mode::ATOMIC_ADD_RELAXED_SYNC:
-            times[linearized_gid] = atomic_add<simt::memory_order_relaxed, true>(atomic, active, local_target);
-            break;
-        case Mode::SPINLOCK_MUTEX:
-            times[linearized_gid] = spinlock_mutex(atomic, active, local_target);
-            break;
-    }
+    times[linearized_gid] = dispatch_atomic(atomic, active, local_target, mode, scope);
 }
 
 void add_baseline_benchmarks(bool do_long_benchmark) {
     char name[512];
 
-    Mode bm_modes[] = {
-        Mode::ATOMIC_ADD_ACQUIRE, Mode::ATOMIC_ADD_SEQ_CST, Mode::ATOMIC_ADD_RELAXED,
-        Mode::ATOMIC_ADD_ACQUIRE_SYNC, Mode::ATOMIC_ADD_SEQ_CST_SYNC, Mode::ATOMIC_ADD_RELAXED_SYNC,
-        Mode::SPINLOCK_MUTEX
-    };
+    for (auto mode : s_modes) {
+        const char *mode_name = ModeStrings[static_cast<int>(mode)];
 
-    simt::thread_scope bm_scopes[] {
-        simt::thread_scope_block, simt::thread_scope_device, simt::thread_scope_system
-    };
+        for (auto scope : s_scopes) {
+            simt::thread_scope thread_scope = static_cast<simt::thread_scope>(scope);
+            const char *scope_name = ScopeStrings[static_cast<int>(scope)];
 
-    const char *bm_names[] = {
-        "add_acquire", "add_seq_cst", "add_relaxed",
-        "add_acquire_sync", "add_seq_cst_sync", "add_relaxed_sync",
-        "spinlock"
-    };
-
-    const char *bm_scope_names[] = {
-        "block", "device", "system"
-    };
-
-    for (int i = 0; i < 7; i++) {
-        Mode mode = bm_modes[i];
-        const char *mode_name = bm_names[i];
-
-        for (int j = 0; j < 3; j++) {
-            simt::thread_scope scope = bm_scopes[j];
-            const char *scope_name = bm_scope_names[j];
             snprintf(name, 512, "bm_contention_baseline_%s_%s_%s", mode_name, scope_name, (do_long_benchmark ? "long" : "short"));
 
             s_benchmarks.push_back({
@@ -359,7 +375,7 @@ void add_baseline_benchmarks(bool do_long_benchmark) {
                 .current_runs = 0,
                 .requested_runs = s_baseline_runs,
                 .initialize = [](bm::benchmark_t *bm) { try_delete_result_file(*bm); },
-                .run = [mode, scope, do_long_benchmark](bm::benchmark_t *bm) {
+                .run = [mode, thread_scope, do_long_benchmark](bm::benchmark_t *bm) {
                     HIP_CHECK(hipMemset(s_times_buffer->get_device_buffer(), 0, s_times_buffer->size()));
                     HIP_CHECK(hipMemset(s_atomic_buffer->get_device_buffer(), 0, s_atomic_buffer->size()));
 
@@ -367,7 +383,7 @@ void add_baseline_benchmarks(bool do_long_benchmark) {
                         static_cast<uint64_t *>(s_times_buffer->get_device_buffer()),
                         static_cast<char *>(s_atomic_buffer->get_device_buffer()),
                         mode,
-                        scope,
+                        thread_scope,
                         do_long_benchmark
                     );
                     HIP_CHECK(hipGetLastError());
@@ -400,6 +416,7 @@ static void add_benchmark(
     int groups,
     int mem_stride,
     Mode mode,
+    Scope scope,
     bool transpose,
     bool small_grid
 ) {
@@ -411,12 +428,6 @@ static void add_benchmark(
 
     char name[512];
 
-    const char *bm_mode_names[] = {
-        "add_seq_cst", "add_acquire", "add_relaxed",
-        "add_seq_cst_sync", "add_acquire_sync", "add_relaxed_sync",
-        "lock"
-    };
-
     int grid_size = small_grid ? MaxGridSizeSmall : MaxGridSizeLarge;
     int block_size = small_grid ? MaxBlockSizeSmall : MaxBlockSizeLarge;
     uint32_t target_value = grid_size * block_size;
@@ -427,8 +438,9 @@ static void add_benchmark(
         target_value *= AtomicAddMinOperations;
     }
 
-    sprintf(name, "bm_contention_%s_t_%d_%d_m_%d_%d%s%s",
-        bm_mode_names[static_cast<int>(mode)],
+    snprintf(name, 512, "bm_contention_%s_%s_t_%d_%d_m_%d_%d%s%s",
+        ModeStrings[static_cast<int>(mode)],
+        ScopeStrings[static_cast<int>(scope)],
         active_lanes,
         active_warps,
         groups,
@@ -437,6 +449,8 @@ static void add_benchmark(
         (small_grid ? "_small_grid" : "")
     );
 
+    simt::thread_scope thread_scope = static_cast<simt::thread_scope>(scope);
+
     s_benchmarks.push_back({
         .name = name,
         .grid_size = grid_size,
@@ -444,7 +458,7 @@ static void add_benchmark(
         .current_runs = 0,
         .requested_runs = runs,
         .initialize = [](bm::benchmark_t *bm){ try_delete_result_file(*bm); },
-        .run = [active_lanes, active_warps, groups, mem_stride, transpose, target_value, mode](bm::benchmark_t *bm) {
+        .run = [active_lanes, active_warps, groups, mem_stride, transpose, target_value, mode, thread_scope](bm::benchmark_t *bm) {
             HIP_CHECK(hipMemset(s_times_buffer->get_device_buffer(), 0, s_times_buffer->size()));
             HIP_CHECK(hipMemset(s_atomic_buffer->get_device_buffer(), 0, s_atomic_buffer->size()));
 
@@ -469,7 +483,8 @@ static void add_benchmark(
                 transpose,
                 static_cast<uint64_t *>(s_mask_buffer->get_device_buffer()),
                 target_value,
-                mode
+                mode,
+                thread_scope
             );
             HIP_CHECK(hipGetLastError());
             HIP_CHECK(hipDeviceSynchronize());
@@ -505,54 +520,30 @@ static void add_benchmark(
 
 void add_benchmarks(int active_lanes, int active_warps, int groups, int mem_stride) {
     for (auto mode : s_modes) {
-        for (auto grid : s_grids) {
-            for (auto transpose_mode : s_transpose_modes) {
-                add_benchmark(
-                    s_benchmark_runs,
-                    active_lanes,
-                    active_warps,
-                    groups,
-                    mem_stride,
-                    mode,
-                    transpose_mode == Transpose::Yes,
-                    grid == Grid::Small
-                );
+        for (auto scope : s_scopes) {
+            for (auto grid : s_grids) {
+                for (auto transpose_mode : s_transpose_modes) {
+                    add_benchmark(
+                        s_benchmark_runs,
+                        active_lanes,
+                        active_warps,
+                        groups,
+                        mem_stride,
+                        mode,
+                        scope,
+                        transpose_mode == Transpose::SCATTERED,
+                        grid == Grid::SMALL
+                    );
+                }
             }
         }
     }
-}
-
-template <typename Enum>
-static void parse_list(const char *options[], int num_options, std::vector<Enum> &config) {
-    char *option_string = strdup(optarg);
-    char *option = nullptr;
-
-    config.clear();
-
-    while ((option = strsep(&option_string, ","))) {
-        int enum_value = -1;
-        for (int i = 0; i < num_options; i++) {
-            if (strcmp(option, options[i]) == 0) {
-                enum_value = i;
-                break;
-            }
-        }
-
-        if (enum_value == -1) {
-            std::cerr << "Unknown option: " << option << std::endl;
-            free(option);
-            abort();
-        }
-
-        config.emplace_back(static_cast<Enum>(enum_value));
-    }
-
-    free(option);
 }
 
 static void parse_options(int argc, char *argv[]) {
     static const struct option long_options[] = {
         {"modes", required_argument, nullptr, 0},
+        {"scopes", required_argument, nullptr, 0},
         {"grids", required_argument, nullptr, 0},
         {"transpose", required_argument, nullptr, 0},
         {"runs", required_argument, nullptr, 0},
@@ -563,18 +554,12 @@ static void parse_options(int argc, char *argv[]) {
         {"no-offsetted-strides", no_argument, nullptr, 0},
     };
 
-    static const char *modes[] = {
-        "add_acquire", "add_seq_cst", "add_relaxed",
-        "add_acquire_sync", "add_seq_cst_sync", "add_relaxed_sync",
-        "spinlock"
-    };
-
     static const char *grids[] = {
         "large", "small"
     };
 
     static const char *transpose_modes[] = {
-        "no", "yes"
+        "direct", "scattered"
     };
 
     int option_index = 0;
@@ -587,38 +572,41 @@ static void parse_options(int argc, char *argv[]) {
 
         switch (option_index) {
             case 0:
-                parse_list<Mode>(modes, sizeof(modes) / sizeof(modes[0]), s_modes);
+                parse_list<Mode>(ModeStrings, sizeof(ModeStrings) / sizeof(ModeStrings[0]), s_modes);
                 break;
             case 1:
-                parse_list<Grid>(grids, sizeof(grids) / sizeof(grids[0]), s_grids);
+                parse_list<Scope>(ScopeStrings, sizeof(ScopeStrings) / sizeof(ScopeStrings[0]), s_scopes);
                 break;
             case 2:
-                parse_list<Transpose>(transpose_modes, sizeof(transpose_modes) / sizeof(transpose_modes[0]), s_transpose_modes);
+                parse_list<Grid>(grids, sizeof(grids) / sizeof(grids[0]), s_grids);
                 break;
             case 3:
+                parse_list<Transpose>(transpose_modes, sizeof(transpose_modes) / sizeof(transpose_modes[0]), s_transpose_modes);
+                break;
+            case 4:
                 s_benchmark_runs = atoi(optarg);
                 if (s_benchmark_runs <= 0) {
                     std::cerr << "Invalid number of runs: " << optarg << std::endl;
                     abort();
                 }
                 break;
-            case 4:
+            case 5:
                 s_baseline_runs = atoi(optarg);
                 if (s_baseline_runs <= 0) {
                     std::cerr << "Invalid number of baseline runs: " << optarg << std::endl;
                     abort();
                 }
                 break;
-            case 5:
+            case 6:
                 s_do_baseline_benchmarks = false;
                 break;
-            case 6:
+            case 7:
                 s_do_varying_threads_benchmarks = false;
                 break;
-            case 7:
+            case 8:
                 s_do_varying_strides_benchmarks = false;
                 break;
-            case 8:
+            case 9:
                 s_do_offsetted_strides_benchmarks = false;
                 break;
         }
@@ -627,7 +615,13 @@ static void parse_options(int argc, char *argv[]) {
     std::cout << "Configuration:" << std::endl;
     std::cout << "Modes: ";
     for (auto mode : s_modes) {
-        std::cout << modes[static_cast<int>(mode)] << " ";
+        std::cout << ModeStrings[static_cast<int>(mode)] << " ";
+    }
+    std::cout << std::endl;
+
+    std::cout << "Scopes: ";
+    for (auto scope : s_scopes) {
+        std::cout << ScopeStrings[static_cast<int>(scope)] << " ";
     }
     std::cout << std::endl;
 

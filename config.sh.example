@@ -11,10 +11,22 @@ BM_CONTENTION=true
 BM_CONTENTION_RUNS=10
 BM_CONTENTION_BASELINE_RUNS=1024
 BM_CONTENTION_MODES=add_acquire,add_seq_cst,add_relaxed,add_acquire_sync,add_seq_cst_sync,add_relaxed_sync,spinlock
-BM_CONTENTION_SCOPES=local,device,system
+BM_CONTENTION_SCOPES=block,device,system
 BM_CONTENTION_GRIDS=small,large
 BM_CONTENTION_TRANSPOSE_MODES=direct,scattered
 BM_CONTENTION_NO_BASELINE=false
 BM_CONTENTION_NO_VARYING_THREADS=false
 BM_CONTENTION_NO_VARYING_STRIDES=false
 BM_CONTENTION_NO_OFFSETTED_STRIDES=false
+
+# Atomics benchmark config
+BM_ATOMICS=true
+BM_ATOMICS_VARIABLE_SPINLOCK_RUNS=8
+BM_ATOMICS_VARIABLE_SPINLOCK_MODES=or,cas,add,load_store
+BM_ATOMICS_STORE_RUNS=32
+BM_ATOMICS_STORE_MODES=device_relaxed,device_seq_cst,system_relaxed,system_seq_cst,mmio,volatile
+BM_ATOMICS_FIXED_SPINLOCK_RUNS=32
+BM_ATOMICS_FIXED_SPINLOCK_MODES=device_or,device_cas,system_or,system_cas
+BM_ATOMICS_NO_VARIABLE_SPINLOCK=false
+BM_ATOMICS_NO_STORE=false
+BM_ATOMICS_NO_FIXED_SPINLOCK=false

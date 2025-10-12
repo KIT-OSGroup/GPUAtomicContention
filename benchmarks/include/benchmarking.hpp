@@ -1,3 +1,5 @@
+#pragma once
+
 #include <cstddef>
 #include <functional>
 #include <string>
@@ -19,9 +21,7 @@ namespace bm
     };
 
     void run_randomized(std::vector<benchmark_t> &benchmarks);
-
     void run_linear(std::vector<benchmark_t> &benchmarks);
-
     void try_delete_result_file(const benchmark_t &benchmark);
     void append_binary_result_file(const benchmark_t &benchmark, const char *data, size_t count);
 }

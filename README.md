@@ -2,26 +2,19 @@
 
 This repository contains all necessary files and instructions to run the benchmark suite presented in our PLOS '25 paper [Are Your GPU Atomics Secretly Contending?](https://dl.acm.org/doi/10.1145/3764860.3768338).
 
-## Note: Draft status
-The repository is currently in **draft status**.
-While all benchmarks presented in the paper are already added,
-some extensions are still missing.
-The repository will be completed by the time the workshop starts on Monday, October 13 2025,
-at which point this note will be removed.
-
 ## Dependencies
 
 **Hardware Requirements:**
 
 - An AMD GPU using a RDNA1, RDNA2, or RDNA3 instruction set
-- An Nvidia GPU supporting at least Compute Capability 7.0 (Volta or newer)
+- An NVIDIA GPU supporting at least Compute Capability 7.0 (Volta or newer)
 
 **Operating System:** Linux
 
 **Software Requirements:**
 
-- Docker (with NVIDIA Container Toolkit) or podman
-- CMake
+- Docker or podman
+- Bash
 - Make
 - Python
 - Matplotlib
@@ -50,6 +43,16 @@ Refer to the table below for explanation on the settings.
 |  `BM_CONTENTION_NO_VARYING_THREADS`  |  Boolean | Disable varying thread benchmarks for the atomic contention benchmark.                                                                                                                                         |
 |  `BM_CONTENTION_NO_VARYING_STRIDES`  |  Boolean | Disable varying memory stride benchmarks for the atomic contention benchmark.                                                                                                                                  |
 | `BM_CONTENTION_NO_OFFSETTED_STRIDES` |  Boolean | Disable non-power-of-two memory stride benchmarks for the atomic contention benchmark.                                                                                                                         |
+|             `BM_ATOMICS`             |  Boolean | Enable the atomic store and spinlock benchmark.                                                                                                                                                                |
+|  `BM_ATOMICS_VARIABLE_SPINLOCK_RUNS` |  Integer | Number of runs for the spinlock benchmarks with variable lanes.                                                                                                                                                |
+| `BM_ATOMICS_VARIABLE_SPINLOCK_MODES` |  String  | Modes to use for the spinlock benchmarks with variable lanes as a comma separated list. Allowed values: `or`, `cas`, `add`, `load_store`                                                                       |
+|        `BM_ATOMICS_STORE_RUNS`       |  Integer | Number of runs for the atomic store benchmarks.                                                                                                                                                                |
+|       `BM_ATOMICS_STORE_MODES`       |  String  | Modes to use for the atomic store benchmarks as a comma separated list. Allowed values: `device_relaxed`, `device_seq_cst`, `system_relaxed`, `system_seq_cst`, `mmio`, `volatile`                             |
+|   `BM_ATOMICS_FIXED_SPINLOCK_RUNS`   |  Integer | Number of runs for the spinlock benchmarks with full warps.                                                                                                                                                    |
+|   `BM_ATOMICS_FIXED_SPINLOCK_MODES`  |  String  | Modes to use for the spinlock benchmarks with full warps. Allowed values: `device_or`, `device_cas`, `system_or`, `system_cas`                                                                                 |
+|   `BM_ATOMICS_NO_VARIABLE_SPINLOCK`  |  Boolean | Disable spinlock benchmarks with variable lanes.                                                                                                                                                               |
+|         `BM_ATOMICS_NO_STORE`        |  Boolean | Disable atomic store benchmarks.                                                                                                                                                                               |
+|    `BM_ATOMICS_NO_FIXED_SPINLOCK`    |  Boolean | Disable spinlock benchmarks with full warps.                                                                                                                                                                   |
 
 ## Running
 
@@ -70,7 +73,7 @@ The benchmark suite includes the following programs:
 
 - `bm_contention`, a benchmark evaluating atomic performance under contention and different memory access patterns.
 - `bm_atomics`, a benchmark evaluating specific atomic stores and a spinlock implemented using either an _Atomic Or_ or an _Atomic Compare and Swap_ operation.
-- `test_globaltimer`, a utility program to measure the rate of the globaltimer we use for measurement.
+- `test_globaltimer`, a utility program to measure the rate of the global timer we use for measurement.
 - `test_gpu_cpu_atomics`, a program to test PCIe atomics between the GPU and CPU.
 - `test_cross_gpu_atomics`, a program to test PCIe atomics between two or more GPUs. This program uses a shared file for synchronization and the actual test.
 - `test_barriers`, a program to test different grid layouts for maximum occupancy using a simple barrier implementation.
@@ -94,4 +97,5 @@ numpages = {9},
 keywords = {Atomic Contention, Atomic Operations, GPU, Microbenchmarks, Synchronization},
 location = {Seoul, Republic of Korea},
 series = {PLOS '25}
-}```
+}
+```
